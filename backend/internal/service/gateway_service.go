@@ -5855,6 +5855,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	if getHeaderRaw(req.Header, "anthropic-version") == "" {
 		setHeaderRaw(req.Header, "anthropic-version", "2023-06-01")
 	}
+	ApplyAccountRequestHeadersOverride(req, account)
 
 	return req, body, nil
 }
@@ -6858,6 +6859,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	if s.debugClaudeMimicEnabled() {
 		logClaudeMimicDebug(req, body, account, tokenType, mimicClaudeCode)
 	}
+	ApplyAccountRequestHeadersOverride(req, account)
 
 	return req, body, nil
 }
@@ -10261,6 +10263,7 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 	if req.Header.Get("anthropic-version") == "" {
 		req.Header.Set("anthropic-version", "2023-06-01")
 	}
+	ApplyAccountRequestHeadersOverride(req, account)
 
 	return req, nil
 }
@@ -10401,6 +10404,7 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	if s.debugClaudeMimicEnabled() {
 		logClaudeMimicDebug(req, body, account, tokenType, mimicClaudeCode)
 	}
+	ApplyAccountRequestHeadersOverride(req, account)
 
 	return req, body, nil
 }

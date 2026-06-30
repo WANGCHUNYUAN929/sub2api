@@ -526,6 +526,10 @@ func (h *AccountHandler) Create(c *gin.Context) {
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
+	if err := service.ValidateAccountRequestHeadersOverrideForAccount(req.Platform, req.Type, req.Extra); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
 
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
@@ -610,6 +614,21 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
+	if req.Extra != nil {
+		currentAccount, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		accountType := currentAccount.Type
+		if req.Type != "" {
+			accountType = req.Type
+		}
+		if err := service.ValidateAccountRequestHeadersOverrideForAccount(currentAccount.Platform, accountType, req.Extra); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+	}
 
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk

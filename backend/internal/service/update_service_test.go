@@ -28,10 +28,19 @@ func (s *updateServiceCacheStub) SetUpdateInfo(_ context.Context, data string, _
 }
 
 type updateServiceGitHubClientStub struct {
-	release *GitHubRelease
+	release  *GitHubRelease
+	releases map[string]*GitHubRelease
+	fetched  []string
 }
 
-func (s *updateServiceGitHubClientStub) FetchLatestRelease(context.Context, string) (*GitHubRelease, error) {
+func (s *updateServiceGitHubClientStub) FetchLatestRelease(_ context.Context, repo string) (*GitHubRelease, error) {
+	s.fetched = append(s.fetched, repo)
+	if s.releases != nil {
+		if release, ok := s.releases[repo]; ok {
+			return release, nil
+		}
+		return nil, errors.New("release not found")
+	}
 	return s.release, nil
 }
 
@@ -61,4 +70,37 @@ func TestUpdateServicePerformUpdateNoUpdateReturnsSentinel(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, errors.Is(err, ErrNoUpdateAvailable))
 	require.ErrorIs(t, err, ErrNoUpdateAvailable)
+}
+
+func TestUpdateServiceCheckUpdateUsesCustomUpdateRepoAndOfficialUpstream(t *testing.T) {
+	t.Setenv(updateRepoEnvKey, "custom/sub2api")
+	t.Setenv(upstreamRepoEnvKey, "Wei-Shaw/sub2api")
+
+	github := &updateServiceGitHubClientStub{
+		releases: map[string]*GitHubRelease{
+			"custom/sub2api": {
+				TagName: "v0.1.133",
+				Name:    "custom-v0.1.133",
+				HTMLURL: "https://github.com/custom/sub2api/releases/tag/v0.1.133",
+			},
+			"Wei-Shaw/sub2api": {
+				TagName: "v0.1.134",
+				Name:    "official-v0.1.134",
+				HTMLURL: "https://github.com/Wei-Shaw/sub2api/releases/tag/v0.1.134",
+			},
+		},
+	}
+	svc := NewUpdateService(&updateServiceCacheStub{}, github, "0.1.132", "release")
+
+	info, err := svc.CheckUpdate(context.Background(), true)
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"custom/sub2api", "Wei-Shaw/sub2api"}, github.fetched)
+	require.Equal(t, "custom/sub2api", info.UpdateRepo)
+	require.Equal(t, "Wei-Shaw/sub2api", info.UpstreamRepo)
+	require.Equal(t, "0.1.133", info.LatestVersion)
+	require.True(t, info.HasUpdate)
+	require.Equal(t, "0.1.134", info.UpstreamLatestVersion)
+	require.True(t, info.HasUpstreamUpdate)
+	require.Equal(t, "official-v0.1.134", info.UpstreamReleaseInfo.Name)
 }

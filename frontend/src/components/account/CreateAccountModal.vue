@@ -2596,6 +2596,20 @@
         </div>
       </div>
 
+      <div
+        v-if="form.platform === 'openai'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <label class="input-label">{{ t('admin.accounts.requestHeadersOverride') }}</label>
+        <textarea
+          v-model="requestHeadersOverrideInput"
+          class="input min-h-[88px] font-mono text-xs"
+          :placeholder="t('admin.accounts.requestHeadersOverridePlaceholder')"
+          spellcheck="false"
+        ></textarea>
+        <p class="input-hint">{{ t('admin.accounts.requestHeadersOverrideDesc') }}</p>
+      </div>
+
       <!-- OpenAI WS Mode 三态（off/ctx_pool/passthrough） -->
       <div
         v-if="form.platform === 'openai' && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
@@ -2645,6 +2659,20 @@
             />
           </button>
         </div>
+      </div>
+
+      <div
+        v-if="form.platform === 'anthropic' && accountCategory === 'apikey'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <label class="input-label">{{ t('admin.accounts.requestHeadersOverride') }}</label>
+        <textarea
+          v-model="requestHeadersOverrideInput"
+          class="input min-h-[88px] font-mono text-xs"
+          :placeholder="t('admin.accounts.requestHeadersOverridePlaceholder')"
+          spellcheck="false"
+        ></textarea>
+        <p class="input-hint">{{ t('admin.accounts.requestHeadersOverrideDesc') }}</p>
       </div>
 
       <!-- Anthropic API Key: Web Search Emulation (hidden when global disabled) -->
@@ -3497,6 +3525,8 @@ const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
+const REQUEST_HEADERS_OVERRIDE_KEY = 'request_headers_override'
+const requestHeadersOverrideInput = ref('')
 const anthropicPassthroughEnabled = ref(false)
 const webSearchEmulationMode = ref('default')
 const webSearchGlobalEnabled = ref(false)
@@ -3931,6 +3961,7 @@ watch(
     }
     if (newPlatform !== 'openai') {
       openaiPassthroughEnabled.value = false
+      requestHeadersOverrideInput.value = ''
       openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
@@ -3939,6 +3970,7 @@ watch(
     }
     if (newPlatform !== 'anthropic') {
       anthropicPassthroughEnabled.value = false
+      requestHeadersOverrideInput.value = ''
       webSearchEmulationMode.value = 'default'
     }
     // Reset OAuth states
@@ -3961,6 +3993,9 @@ watch(
     }
     if (platform !== 'anthropic' || category !== 'apikey') {
       anthropicPassthroughEnabled.value = false
+      if (platform !== 'openai') {
+        requestHeadersOverrideInput.value = ''
+      }
       webSearchEmulationMode.value = 'default'
     }
   }
@@ -4264,7 +4299,14 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
 const submitCreateAccount = async (payload: CreateAccountRequest) => {
   submitting.value = true
   try {
-    await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
+    const nextExtra = applyRequestHeadersOverrideExtra(payload.extra, payload.platform, payload.type)
+    if (nextExtra === null) {
+      return
+    }
+    await adminAPI.accounts.create(withAntigravityConfirmFlag({
+      ...payload,
+      extra: nextExtra
+    }))
     appStore.showSuccess(t('admin.accounts.accountCreated'))
     emit('created')
     handleClose()
@@ -4339,6 +4381,7 @@ const resetForm = () => {
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
+  requestHeadersOverrideInput.value = ''
   anthropicPassthroughEnabled.value = false
   webSearchEmulationMode.value = 'default'
   // Reset quota control state
@@ -4815,6 +4858,67 @@ const handleValidateSessionToken = (_sessionToken: string) => {
 const formatDateTimeLocal = formatDateTimeLocalInput
 const parseDateTimeLocal = parseDateTimeLocalInput
 
+const canUseRequestHeadersOverride = (platform: AccountPlatform, type: AccountType): boolean =>
+  platform === 'openai' || (platform === 'anthropic' && type === 'apikey')
+
+const parseRequestHeadersOverride = (): Record<string, string> | null => {
+  const input = requestHeadersOverrideInput.value.trim()
+  if (!input) {
+    return {}
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(input)
+  } catch {
+    appStore.showError(t('admin.accounts.requestHeadersOverrideInvalidJson'))
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    appStore.showError(t('admin.accounts.requestHeadersOverrideMustBeObject'))
+    return null
+  }
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+    if (key.toLowerCase() !== 'user-agent') {
+      appStore.showError(t('admin.accounts.requestHeadersOverrideOnlyUserAgent'))
+      return null
+    }
+    if (typeof value !== 'string') {
+      appStore.showError(t('admin.accounts.requestHeadersOverrideValueMustBeString'))
+      return null
+    }
+    const trimmed = value.trim()
+    if (!trimmed) {
+      appStore.showError(t('admin.accounts.requestHeadersOverrideValueRequired'))
+      return null
+    }
+    out['User-Agent'] = trimmed
+  }
+  return out
+}
+
+const applyRequestHeadersOverrideExtra = (
+  extra: Record<string, unknown> | undefined,
+  platform: AccountPlatform,
+  type: AccountType
+): Record<string, unknown> | undefined | null => {
+  const next: Record<string, unknown> = { ...(extra || {}) }
+  if (!canUseRequestHeadersOverride(platform, type)) {
+    delete next[REQUEST_HEADERS_OVERRIDE_KEY]
+    return Object.keys(next).length > 0 ? next : undefined
+  }
+  const headers = parseRequestHeadersOverride()
+  if (headers === null) {
+    return null
+  }
+  if (Object.keys(headers).length > 0) {
+    next[REQUEST_HEADERS_OVERRIDE_KEY] = headers
+  } else {
+    delete next[REQUEST_HEADERS_OVERRIDE_KEY]
+  }
+  return Object.keys(next).length > 0 ? next : undefined
+}
+
 // Create account and handle success/failure
 const createAccountAndFinish = async (
   platform: AccountPlatform,
@@ -4826,7 +4930,7 @@ const createAccountAndFinish = async (
     return
   }
   // Inject quota limits for apikey/bedrock accounts
-  let finalExtra = extra
+  let finalExtra: Record<string, unknown> | undefined = extra
   if (type === 'apikey' || type === 'bedrock') {
     const quotaExtra: Record<string, unknown> = { ...(extra || {}) }
     if (editQuotaLimit.value != null && editQuotaLimit.value > 0) {
@@ -5013,6 +5117,10 @@ const handleOpenAIExchange = async (authCode: string) => {
     const credentials = oauthClient.buildCredentials(tokenInfo)
     const oauthExtra = oauthClient.buildExtraInfo(tokenInfo) as Record<string, unknown> | undefined
     const extra = buildOpenAIExtra(oauthExtra)
+    const accountExtra = applyRequestHeadersOverrideExtra(extra, 'openai', 'oauth')
+    if (accountExtra === null) {
+      return
+    }
     const shouldCreateOpenAI = form.platform === 'openai'
 
     // Add model mapping for OpenAI OAuth accounts（透传模式下不应用）
@@ -5041,7 +5149,7 @@ const handleOpenAIExchange = async (authCode: string) => {
         platform: 'openai',
         type: 'oauth',
         credentials,
-        extra,
+        extra: accountExtra,
         proxy_id: form.proxy_id,
         concurrency: form.concurrency,
         load_factor: form.load_factor ?? undefined,
@@ -5115,6 +5223,10 @@ const handleOpenAIImportCodexSession = async (content: string) => {
 
   try {
     const extra = buildOpenAIExtra()
+    const accountExtra = applyRequestHeadersOverrideExtra(extra, 'openai', 'oauth')
+    if (accountExtra === null) {
+      return
+    }
     const result = await adminAPI.accounts.importCodexSession({
       content: trimmed,
       name: form.name,
@@ -5128,7 +5240,7 @@ const handleOpenAIImportCodexSession = async (content: string) => {
       expires_at: form.expires_at,
       auto_pause_on_expired: autoPauseOnExpired.value,
       credential_extras: Object.keys(credentialExtras).length > 0 ? credentialExtras : undefined,
-      extra,
+      extra: accountExtra,
       update_existing: true
     })
 
@@ -5193,6 +5305,10 @@ const handleOpenAIImportCodexPAT = async (accessToken: string) => {
 
   try {
     const extra = buildOpenAIExtra()
+    const accountExtra = applyRequestHeadersOverrideExtra(extra, 'openai', 'oauth')
+    if (accountExtra === null) {
+      return
+    }
     await adminAPI.accounts.createOpenAICodexPAT({
       access_token: trimmed,
       name: form.name,
@@ -5206,7 +5322,7 @@ const handleOpenAIImportCodexPAT = async (accessToken: string) => {
       expires_at: form.expires_at,
       auto_pause_on_expired: autoPauseOnExpired.value,
       credential_extras: Object.keys(credentialExtras).length > 0 ? credentialExtras : undefined,
-      extra
+      extra: accountExtra
     })
 
     appStore.showSuccess(t('admin.accounts.messages.accountCreated'))
@@ -5268,6 +5384,10 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
         }
         const oauthExtra = oauthClient.buildExtraInfo(tokenInfo) as Record<string, unknown> | undefined
         const extra = buildOpenAIExtra(oauthExtra)
+        const accountExtra = applyRequestHeadersOverrideExtra(extra, 'openai', 'oauth')
+        if (accountExtra === null) {
+          return
+        }
 
         // Add model mapping for OpenAI OAuth accounts（透传模式下不应用）
         if (shouldCreateOpenAI && !isOpenAIModelRestrictionDisabled.value) {
@@ -5294,7 +5414,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
             platform: 'openai',
             type: 'oauth',
             credentials,
-            extra,
+            extra: accountExtra,
             proxy_id: form.proxy_id,
             concurrency: form.concurrency,
             load_factor: form.load_factor ?? undefined,

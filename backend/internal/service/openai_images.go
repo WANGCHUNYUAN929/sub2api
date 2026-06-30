@@ -760,6 +760,7 @@ func (s *OpenAIGatewayService) buildOpenAIImagesRequest(
 	if strings.TrimSpace(contentType) != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
+	ApplyAccountRequestHeadersOverride(req, account)
 	return req, nil
 }
 

@@ -6,11 +6,11 @@
         @click="toggleDropdown"
         class="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition-colors"
         :class="[
-          hasUpdate
+          hasAnyUpdate
             ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:hover:bg-amber-900/50'
             : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-800 dark:text-dark-400 dark:hover:bg-dark-700'
         ]"
-        :title="hasUpdate ? t('version.updateAvailable') : t('version.upToDate')"
+        :title="hasAnyUpdate ? t('version.updateAvailable') : t('version.upToDate')"
       >
         <span v-if="currentVersion" class="font-medium">v{{ currentVersion }}</span>
         <span
@@ -18,7 +18,7 @@
           class="h-3 w-12 animate-pulse rounded bg-gray-200 font-medium dark:bg-dark-600"
         ></span>
         <!-- Update indicator -->
-        <span v-if="hasUpdate" class="relative flex h-2 w-2">
+        <span v-if="hasAnyUpdate" class="relative flex h-2 w-2">
           <span
             class="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75"
           ></span>
@@ -88,7 +88,7 @@
                   <span v-else class="text-2xl font-bold text-gray-400 dark:text-dark-500">--</span>
                   <!-- Show check mark when up to date -->
                   <span
-                    v-if="!hasUpdate"
+                    v-if="!hasAnyUpdate"
                     class="flex h-5 w-5 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30"
                   >
                     <svg
@@ -106,8 +106,8 @@
                 </div>
                 <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
                   {{
-                    hasUpdate
-                      ? t('version.latestVersion') + ': v' + latestVersion
+                    hasAnyUpdate
+                      ? latestSummary
                       : t('version.upToDate')
                   }}
                 </p>
@@ -250,7 +250,7 @@
                       {{ t('version.updateAvailable') }}
                     </p>
                     <p class="text-xs text-amber-600/70 dark:text-amber-400/70">
-                      v{{ latestVersion }}
+                      {{ latestSummary }}
                     </p>
                   </div>
                   <svg
@@ -307,7 +307,7 @@
                       {{ t('version.updateAvailable') }}
                     </p>
                     <p class="text-xs text-amber-600/70 dark:text-amber-400/70">
-                      v{{ latestVersion }}
+                      {{ latestSummary }}
                     </p>
                   </div>
                 </div>
@@ -337,6 +337,25 @@
                   {{ updating ? t('version.updating') : t('version.updateNow') }}
                 </button>
 
+                <div
+                  v-if="isCustomUpdateRepo"
+                  class="rounded-lg border border-blue-200 bg-blue-50 p-2 text-xs text-blue-600 dark:border-blue-800/50 dark:bg-blue-900/20 dark:text-blue-300"
+                >
+                  <p>{{ t('version.officialUpdateSource', { repo: upstreamRepo || '-' }) }}</p>
+                  <p>{{ t('version.actualUpdateSource', { repo: updateRepo || '-' }) }}</p>
+                </div>
+
+                <a
+                  v-if="upstreamReleaseInfo?.html_url && upstreamReleaseInfo.html_url !== '#'"
+                  :href="upstreamReleaseInfo.html_url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="flex items-center justify-center gap-1 text-xs text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-dark-200"
+                >
+                  {{ t('version.viewOfficialRelease') }}
+                  <Icon name="externalLink" size="xs" :stroke-width="2" />
+                </a>
+
                 <!-- View release link -->
                 <a
                   v-if="releaseInfo?.html_url && releaseInfo.html_url !== '#'"
@@ -346,6 +365,51 @@
                   class="flex items-center justify-center gap-1 text-xs text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-dark-200"
                 >
                   {{ t('version.viewChangelog') }}
+                  <Icon name="externalLink" size="xs" :stroke-width="2" />
+                </a>
+              </div>
+
+              <div v-else-if="hasUpstreamUpdate" class="space-y-2">
+                <div
+                  class="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/50 dark:bg-amber-900/20"
+                >
+                  <div
+                    class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/50"
+                  >
+                    <Icon
+                      name="download"
+                      size="sm"
+                      :stroke-width="2"
+                      class="text-amber-600 dark:text-amber-400"
+                    />
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm font-medium text-amber-700 dark:text-amber-300">
+                      {{ t('version.officialUpdateAvailable') }}
+                    </p>
+                    <p class="text-xs text-amber-600/70 dark:text-amber-400/70">
+                      {{ latestSummary }}
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  v-if="isCustomUpdateRepo"
+                  class="rounded-lg border border-blue-200 bg-blue-50 p-2 text-xs text-blue-600 dark:border-blue-800/50 dark:bg-blue-900/20 dark:text-blue-300"
+                >
+                  <p>{{ t('version.officialUpdateSource', { repo: upstreamRepo || '-' }) }}</p>
+                  <p>{{ t('version.actualUpdateSource', { repo: updateRepo || '-' }) }}</p>
+                  <p>{{ t('version.customUpdateNotReady') }}</p>
+                </div>
+
+                <a
+                  v-if="upstreamReleaseInfo?.html_url && upstreamReleaseInfo.html_url !== '#'"
+                  :href="upstreamReleaseInfo.html_url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="flex items-center justify-center gap-1 text-xs text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-dark-200"
+                >
+                  {{ t('version.viewOfficialRelease') }}
                   <Icon name="externalLink" size="xs" :stroke-width="2" />
                 </a>
               </div>
@@ -407,7 +471,24 @@ const currentVersion = computed(() => appStore.currentVersion || props.version |
 const latestVersion = computed(() => appStore.latestVersion)
 const hasUpdate = computed(() => appStore.hasUpdate)
 const releaseInfo = computed(() => appStore.releaseInfo)
+const updateRepo = computed(() => appStore.updateRepo)
+const upstreamRepo = computed(() => appStore.upstreamRepo)
+const upstreamLatestVersion = computed(() => appStore.upstreamLatestVersion)
+const hasUpstreamUpdate = computed(() => appStore.hasUpstreamUpdate)
+const upstreamReleaseInfo = computed(() => appStore.upstreamReleaseInfo)
 const buildType = computed(() => appStore.buildType)
+const isCustomUpdateRepo = computed(() =>
+  !!updateRepo.value &&
+  !!upstreamRepo.value &&
+  updateRepo.value.toLowerCase() !== upstreamRepo.value.toLowerCase()
+)
+const hasAnyUpdate = computed(() => hasUpdate.value || hasUpstreamUpdate.value)
+const latestSummary = computed(() => {
+  if (isCustomUpdateRepo.value && upstreamLatestVersion.value) {
+    return t('version.officialLatestVersion') + ': v' + upstreamLatestVersion.value
+  }
+  return t('version.latestVersion') + ': v' + latestVersion.value
+})
 
 // Update process states (local to this component)
 const updating = ref(false)

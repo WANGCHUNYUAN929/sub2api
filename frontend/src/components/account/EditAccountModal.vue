@@ -1370,6 +1370,20 @@
         </div>
       </div>
 
+      <div
+        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'apikey')"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <label class="input-label">{{ t('admin.accounts.requestHeadersOverride') }}</label>
+        <textarea
+          v-model="requestHeadersOverrideInput"
+          class="input min-h-[88px] font-mono text-xs"
+          :placeholder="t('admin.accounts.requestHeadersOverridePlaceholder')"
+          spellcheck="false"
+        ></textarea>
+        <p class="input-hint">{{ t('admin.accounts.requestHeadersOverrideDesc') }}</p>
+      </div>
+
       <!-- OpenAI Codex 图片生成桥接账号级覆盖 -->
       <div
         v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'apikey')"
@@ -1535,6 +1549,20 @@
             />
           </button>
         </div>
+      </div>
+
+      <div
+        v-if="account?.platform === 'anthropic' && account?.type === 'apikey'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <label class="input-label">{{ t('admin.accounts.requestHeadersOverride') }}</label>
+        <textarea
+          v-model="requestHeadersOverrideInput"
+          class="input min-h-[88px] font-mono text-xs"
+          :placeholder="t('admin.accounts.requestHeadersOverridePlaceholder')"
+          spellcheck="false"
+        ></textarea>
+        <p class="input-hint">{{ t('admin.accounts.requestHeadersOverrideDesc') }}</p>
       </div>
 
       <!-- Anthropic API Key: Web Search Emulation (hidden when global disabled) -->
@@ -2606,6 +2634,8 @@ const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexImageGenerationBridgeMode = 'inherit' | 'enabled' | 'disabled'
 const codexImageGenerationBridgeMode = ref<CodexImageGenerationBridgeMode>('inherit')
+const REQUEST_HEADERS_OVERRIDE_KEY = 'request_headers_override'
+const requestHeadersOverrideInput = ref('')
 const anthropicPassthroughEnabled = ref(false)
 const webSearchEmulationMode = ref('default')
 const webSearchGlobalEnabled = ref(false)
@@ -2795,6 +2825,71 @@ const normalizeOpenAIResponsesMode = (mode: unknown): OpenAIResponsesMode => {
 const isOpenAIModelRestrictionDisabled = computed(() =>
   props.account?.platform === 'openai' && openaiPassthroughEnabled.value
 )
+const canUseRequestHeadersOverride = computed(() =>
+  props.account?.platform === 'openai' ||
+  (props.account?.platform === 'anthropic' && props.account?.type === 'apikey')
+)
+const formatRequestHeadersOverride = (extra?: Record<string, unknown>): string => {
+  const raw = extra?.[REQUEST_HEADERS_OVERRIDE_KEY]
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return ''
+  }
+  return JSON.stringify(raw, null, 2)
+}
+const parseRequestHeadersOverride = (): Record<string, string> | null => {
+  const input = requestHeadersOverrideInput.value.trim()
+  if (!input) {
+    return {}
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(input)
+  } catch {
+    appStore.showError(t('admin.accounts.requestHeadersOverrideInvalidJson'))
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    appStore.showError(t('admin.accounts.requestHeadersOverrideMustBeObject'))
+    return null
+  }
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+    if (key.toLowerCase() !== 'user-agent') {
+      appStore.showError(t('admin.accounts.requestHeadersOverrideOnlyUserAgent'))
+      return null
+    }
+    if (typeof value !== 'string') {
+      appStore.showError(t('admin.accounts.requestHeadersOverrideValueMustBeString'))
+      return null
+    }
+    const trimmed = value.trim()
+    if (!trimmed) {
+      appStore.showError(t('admin.accounts.requestHeadersOverrideValueRequired'))
+      return null
+    }
+    out['User-Agent'] = trimmed
+  }
+  return out
+}
+const applyRequestHeadersOverrideExtra = (
+  extra: Record<string, unknown> | undefined
+): Record<string, unknown> | null => {
+  const next: Record<string, unknown> = { ...(extra || {}) }
+  if (!canUseRequestHeadersOverride.value) {
+    delete next[REQUEST_HEADERS_OVERRIDE_KEY]
+    return next
+  }
+  const headers = parseRequestHeadersOverride()
+  if (headers === null) {
+    return null
+  }
+  if (Object.keys(headers).length > 0) {
+    next[REQUEST_HEADERS_OVERRIDE_KEY] = headers
+  } else {
+    delete next[REQUEST_HEADERS_OVERRIDE_KEY]
+  }
+  return next
+}
 const openAIResponsesStatusKey = computed(() => {
   if (openAIResponsesMode.value === 'force_responses') {
     return 'admin.accounts.openai.responsesStatusForcedResponses'
@@ -2989,6 +3084,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   codexCLIOnlyAppServerEnabled.value = false
   codexImageGenerationBridgeMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
+  requestHeadersOverrideInput.value = formatRequestHeadersOverride(extra)
   webSearchEmulationMode.value = 'default'
   if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'apikey')) {
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
@@ -4233,6 +4329,16 @@ const handleSubmit = async () => {
       writeQuotaNotifyToExtra(newExtra, 'update')
       updatePayload.extra = newExtra
     }
+
+    const nextExtra = applyRequestHeadersOverrideExtra(
+      (updatePayload.extra as Record<string, unknown>) ||
+        (props.account.extra as Record<string, unknown>) ||
+        {}
+    )
+    if (nextExtra === null) {
+      return
+    }
+    updatePayload.extra = nextExtra
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
       await submitUpdateAccount(accountID, updatePayload)

@@ -41,6 +41,12 @@ export const useAppStore = defineStore('app', () => {
   const hasUpdate = ref<boolean>(false)
   const buildType = ref<string>('source')
   const releaseInfo = ref<ReleaseInfo | null>(null)
+  const updateRepo = ref<string>('')
+  const upstreamRepo = ref<string>('')
+  const upstreamLatestVersion = ref<string>('')
+  const hasUpstreamUpdate = ref<boolean>(false)
+  const upstreamReleaseInfo = ref<ReleaseInfo | null>(null)
+  const upstreamWarning = ref<string>('')
 
   // Auto-incrementing ID for toasts
   let toastIdCounter = 0
@@ -247,6 +253,12 @@ export const useAppStore = defineStore('app', () => {
         has_update: hasUpdate.value,
         build_type: buildType.value,
         release_info: releaseInfo.value || undefined,
+        update_repo: updateRepo.value || undefined,
+        upstream_repo: upstreamRepo.value || undefined,
+        upstream_latest_version: upstreamLatestVersion.value || undefined,
+        has_upstream_update: hasUpstreamUpdate.value,
+        upstream_release_info: upstreamReleaseInfo.value || undefined,
+        upstream_warning: upstreamWarning.value || undefined,
         cached: true
       }
     }
@@ -264,6 +276,12 @@ export const useAppStore = defineStore('app', () => {
       hasUpdate.value = data.has_update
       buildType.value = data.build_type || 'source'
       releaseInfo.value = data.release_info || null
+      updateRepo.value = data.update_repo || ''
+      upstreamRepo.value = data.upstream_repo || ''
+      upstreamLatestVersion.value = data.upstream_latest_version || ''
+      hasUpstreamUpdate.value = data.has_upstream_update === true
+      upstreamReleaseInfo.value = data.upstream_release_info || null
+      upstreamWarning.value = data.upstream_warning || ''
       versionLoaded.value = true
       return data
     } catch (error) {
@@ -280,6 +298,7 @@ export const useAppStore = defineStore('app', () => {
   function clearVersionCache(): void {
     versionLoaded.value = false
     hasUpdate.value = false
+    hasUpstreamUpdate.value = false
   }
 
   // ==================== Public Settings Management ====================
@@ -430,6 +449,12 @@ export const useAppStore = defineStore('app', () => {
     hasUpdate,
     buildType,
     releaseInfo,
+    updateRepo,
+    upstreamRepo,
+    upstreamLatestVersion,
+    hasUpstreamUpdate,
+    upstreamReleaseInfo,
+    upstreamWarning,
 
     // Computed
     hasActiveToasts,
