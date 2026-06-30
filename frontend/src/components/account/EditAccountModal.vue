@@ -1378,7 +1378,7 @@
         <textarea
           v-model="requestHeadersOverrideInput"
           class="input min-h-[88px] font-mono text-xs"
-          :placeholder="t('admin.accounts.requestHeadersOverridePlaceholder')"
+          :placeholder="REQUEST_HEADERS_OVERRIDE_PLACEHOLDER"
           spellcheck="false"
         ></textarea>
         <p class="input-hint">{{ t('admin.accounts.requestHeadersOverrideDesc') }}</p>
@@ -1559,7 +1559,7 @@
         <textarea
           v-model="requestHeadersOverrideInput"
           class="input min-h-[88px] font-mono text-xs"
-          :placeholder="t('admin.accounts.requestHeadersOverridePlaceholder')"
+          :placeholder="REQUEST_HEADERS_OVERRIDE_PLACEHOLDER"
           spellcheck="false"
         ></textarea>
         <p class="input-hint">{{ t('admin.accounts.requestHeadersOverrideDesc') }}</p>
@@ -2635,6 +2635,7 @@ const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexImageGenerationBridgeMode = 'inherit' | 'enabled' | 'disabled'
 const codexImageGenerationBridgeMode = ref<CodexImageGenerationBridgeMode>('inherit')
 const REQUEST_HEADERS_OVERRIDE_KEY = 'request_headers_override'
+const REQUEST_HEADERS_OVERRIDE_PLACEHOLDER = '{\n  "User-Agent": "codex_vscode/0.142.3 ..."\n}'
 const requestHeadersOverrideInput = ref('')
 const anthropicPassthroughEnabled = ref(false)
 const webSearchEmulationMode = ref('default')
