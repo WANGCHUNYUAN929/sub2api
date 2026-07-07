@@ -408,10 +408,17 @@ func TestAccountTestService_OpenAIAPIKeyResponsesUnsupportedUsesChatCompletionsP
 		"data: [DONE]",
 		"",
 	}, "\n")
-	upstream := &httpUpstreamRecorder{resp: &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
-		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+		},
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+		},
 	}}
 	svc := &AccountTestService{
 		httpUpstream: upstream,
@@ -445,6 +452,62 @@ func TestAccountTestService_OpenAIAPIKeyResponsesUnsupportedUsesChatCompletionsP
 	require.Contains(t, body, "已通过 /v1/chat/completions 验证")
 	require.Contains(t, body, `"success":true`)
 	require.NotContains(t, body, "当前测试接口仅支持 Responses API 路径")
+}
+
+func TestAccountTestService_OpenAIChatCompletionsTestUsesTemporaryHeaderOverride(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	upstreamBody := strings.Join([]string{
+		`data: {"id":"chatcmpl_test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"pong"},"finish_reason":null}]}`,
+		"",
+		`data: {"id":"chatcmpl_test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+		},
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+		},
+	}}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	account := &Account{
+		ID:          95,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://compat-upstream.example/v1",
+		},
+		Extra: map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "hello", "")
+	require.NoError(t, err)
+	require.Empty(t, upstream.lastReq.Header.Get("User-Agent"))
+
+	err = svc.testOpenAIAccountConnection(
+		ctx,
+		withAccountTestRequestHeadersOverride(account, map[string]string{"User-Agent": "claude-cli/2.1.196 (external, claude-vscode, agent-sdk/0.3.196)"}),
+		"gpt-5.4",
+		"hello",
+		"",
+	)
+	require.NoError(t, err)
+	require.Equal(t, "claude-cli/2.1.196 (external, claude-vscode, agent-sdk/0.3.196)", upstream.lastReq.Header.Get("User-Agent"))
+	require.Nil(t, account.Extra[AccountRequestHeadersOverrideExtraKey], "临时测试覆盖不应写回原账号配置")
 }
 
 func TestAccountTestService_OpenAIChatCompletionsPathReturns4xx(t *testing.T) {

@@ -57,3 +57,22 @@ func TestApplyAccountRequestHeadersOverride(t *testing.T) {
 
 	require.Equal(t, "codex_vscode/0.142.3", req.Header.Get("User-Agent"))
 }
+
+func TestWithAccountTestRequestHeadersOverrideDoesNotMutateOriginal(t *testing.T) {
+	account := &Account{
+		Extra: map[string]any{
+			"kept": "value",
+		},
+	}
+
+	got := withAccountTestRequestHeadersOverride(account, map[string]string{
+		"User-Agent": "claude-cli/2.1.196 (external, claude-vscode, agent-sdk/0.3.196)",
+	})
+
+	require.NotSame(t, account, got)
+	require.Equal(t, "value", got.Extra["kept"])
+	require.Nil(t, account.Extra[AccountRequestHeadersOverrideExtraKey])
+	require.Equal(t, map[string]any{
+		"User-Agent": "claude-cli/2.1.196 (external, claude-vscode, agent-sdk/0.3.196)",
+	}, got.Extra[AccountRequestHeadersOverrideExtraKey])
+}

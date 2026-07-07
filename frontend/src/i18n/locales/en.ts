@@ -3502,13 +3502,23 @@ export default {
       apiKeyHint: 'Your Claude Console API Key',
       requestHeadersOverride: 'Upstream request header override',
       requestHeadersOverrideDesc:
-        'Optional JSON object. Current account will override matching upstream request headers. Currently only User-Agent is supported.',
-      requestHeadersOverridePlaceholder: '{\n  "User-Agent": "codex_vscode/0.142.3 ..."\n}',
+        'Optional JSON object. Current account will override matching upstream request headers. Currently only User-Agent is supported. Smart quotes pasted from other apps are normalized and the JSON is formatted on save.',
+      requestHeadersOverridePlaceholder:
+        '{\n  "User-Agent": "claude-cli/2.1.196 (external, claude-vscode, agent-sdk/0.3.196)"\n}',
+      testRequestHeadersOverrideHint:
+        'Optional. Applies only to this connection test. Leave empty to use the saved account override. Smart quotes are normalized and formatted.',
       requestHeadersOverrideInvalidJson: 'Request header override must be valid JSON',
       requestHeadersOverrideMustBeObject: 'Request header override must be a JSON object',
       requestHeadersOverrideValueMustBeString: 'Request header override values must be strings',
       requestHeadersOverrideValueRequired: 'Request header override value cannot be empty',
       requestHeadersOverrideOnlyUserAgent: 'Only User-Agent override is currently supported',
+      requestHeadersOverrideErrors: {
+        invalid_json: 'Request header override must be valid JSON',
+        must_be_object: 'Request header override must be a JSON object',
+        value_must_be_string: 'Request header override values must be strings',
+        value_required: 'Request header override value cannot be empty',
+        only_user_agent: 'Only User-Agent override is currently supported'
+      },
       // OpenAI specific hints
       openai: {
         baseUrlHint: 'Leave default for official OpenAI API',

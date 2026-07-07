@@ -70,6 +70,51 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactOAuthSuccessPersi
 	require.Contains(t, rec.Body.String(), `"type":"test_complete"`)
 }
 
+func TestAccountTestService_TestAccountConnection_OpenAICompactUsesTemporaryHeaderOverride(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	updateCalls := make(chan map[string]any, 1)
+	account := Account{
+		ID:          11,
+		Name:        "openai-oauth",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":       "oauth-token",
+			"chatgpt_account_id": "chatgpt-acc",
+		},
+	}
+	repo := &snapshotUpdateAccountRepo{
+		stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}},
+		updateExtraCalls:      updateCalls,
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"cmp_probe","status":"completed"}`)),
+	}}
+	svc := &AccountTestService{
+		accountRepo:  repo,
+		httpUpstream: upstream,
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/11/test", bytes.NewReader(nil))
+	overrideUA := "claude-cli/2.1.196 (external, claude-vscode, agent-sdk/0.3.196)"
+
+	err := svc.TestAccountConnection(c, account.ID, "gpt-5.4", "", AccountTestModeCompact, map[string]string{"User-Agent": overrideUA})
+	require.NoError(t, err)
+
+	require.Equal(t, overrideUA, upstream.lastReq.Header.Get("User-Agent"))
+	require.Contains(t, rec.Body.String(), `"type":"test_complete"`)
+	<-updateCalls
+	require.Nil(t, account.Extra[AccountRequestHeadersOverrideExtraKey], "临时测试覆盖不应写回原账号配置")
+}
+
 func TestAccountTestService_TestAccountConnection_OpenAICompactOAuth404MarksUnsupported(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

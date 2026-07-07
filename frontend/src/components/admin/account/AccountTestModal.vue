@@ -66,6 +66,21 @@
         />
       </div>
 
+      <div v-if="supportsRequestHeadersOverride" class="space-y-1.5">
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+          {{ t('admin.accounts.requestHeadersOverride') }}
+        </label>
+        <textarea
+          v-model="requestHeadersOverrideInput"
+          :disabled="status === 'connecting'"
+          :placeholder="REQUEST_HEADERS_OVERRIDE_PLACEHOLDER"
+          rows="4"
+          class="input min-h-[88px] font-mono text-xs"
+          spellcheck="false"
+        ></textarea>
+        <p class="input-hint">{{ t('admin.accounts.testRequestHeadersOverrideHint') }}</p>
+      </div>
+
       <!-- Terminal Output -->
       <div class="group relative">
         <div
@@ -240,10 +255,18 @@ import { Icon } from '@/components/icons'
 import { useClipboard } from '@/composables/useClipboard'
 import { buildApiUrl } from '@/api/client'
 import { adminAPI } from '@/api/admin'
+import { useAppStore } from '@/stores/app'
+import {
+  REQUEST_HEADERS_OVERRIDE_PLACEHOLDER,
+  canUseRequestHeadersOverride,
+  formatRequestHeadersOverride,
+  parseRequestHeadersOverrideInput
+} from '@/utils/requestHeadersOverride'
 import type { Account, ClaudeModel } from '@/types'
 
 const { t } = useI18n()
 const { copyToClipboard } = useClipboard()
+const appStore = useAppStore()
 
 interface OutputLine {
   text: string
@@ -272,6 +295,7 @@ const errorMessage = ref('')
 const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const testPrompt = ref('')
+const requestHeadersOverrideInput = ref('')
 const loadingModels = ref(false)
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewImage[]>([])
@@ -291,6 +315,9 @@ const supportsOpenAIImageTest = computed(() => {
 })
 
 const supportsImageTest = computed(() => supportsGeminiImageTest.value || supportsOpenAIImageTest.value)
+const supportsRequestHeadersOverride = computed(() =>
+  canUseRequestHeadersOverride(props.account?.platform, props.account?.type)
+)
 
 const sortTestModels = (models: ClaudeModel[]) => {
   const priorityMap = new Map(prioritizedGeminiModels.map((id, index) => [id, index]))
@@ -309,6 +336,9 @@ watch(
   async (newVal) => {
     if (newVal && props.account) {
       testPrompt.value = ''
+      requestHeadersOverrideInput.value = formatRequestHeadersOverride(
+        props.account.extra as Record<string, unknown> | undefined
+      )
       resetState()
       await loadAvailableModels()
     } else {
@@ -389,6 +419,17 @@ const scrollToBottom = async () => {
 const startTest = async () => {
   if (!props.account || !selectedModelId.value) return
 
+  let requestHeadersOverride: Record<string, string> | undefined
+  if (supportsRequestHeadersOverride.value) {
+    const result = parseRequestHeadersOverrideInput(requestHeadersOverrideInput.value)
+    if (!result.ok) {
+      appStore.showError(t(`admin.accounts.requestHeadersOverrideErrors.${result.error}`))
+      return
+    }
+    requestHeadersOverrideInput.value = result.formatted
+    requestHeadersOverride = Object.keys(result.headers).length > 0 ? result.headers : undefined
+  }
+
   resetState()
   status.value = 'connecting'
   addLine(t('admin.accounts.startingTestForAccount', { name: props.account.name }), 'text-blue-400')
@@ -412,7 +453,8 @@ const startTest = async () => {
       },
       body: JSON.stringify({
               model_id: selectedModelId.value,
-              prompt: supportsImageTest.value ? testPrompt.value.trim() : ''
+              prompt: supportsImageTest.value ? testPrompt.value.trim() : '',
+              request_headers_override: requestHeadersOverride
             }),
       signal: abortController.signal
     })

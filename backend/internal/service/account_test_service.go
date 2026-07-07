@@ -62,6 +62,26 @@ func isOpenAIImageModel(model string) bool {
 	return strings.HasPrefix(strings.ToLower(model), "gpt-image-")
 }
 
+func withAccountTestRequestHeadersOverride(account *Account, overrides ...map[string]string) *Account {
+	if account == nil || len(overrides) == 0 || len(overrides[0]) == 0 {
+		return account
+	}
+
+	next := *account
+	nextExtra := make(map[string]any, len(account.Extra)+1)
+	for key, value := range account.Extra {
+		nextExtra[key] = value
+	}
+
+	headers := make(map[string]any, len(overrides[0]))
+	for key, value := range overrides[0] {
+		headers[key] = value
+	}
+	nextExtra[AccountRequestHeadersOverrideExtraKey] = headers
+	next.Extra = nextExtra
+	return &next
+}
+
 // AccountTestService handles account testing operations
 type AccountTestService struct {
 	accountRepo               AccountRepository
@@ -174,7 +194,7 @@ func createTestPayload(modelID string) (map[string]any, error) {
 // All account types use full Claude Code client characteristics, only auth header differs
 // modelID is optional - if empty, defaults to claude.DefaultTestModel
 // mode is optional - "compact" routes OpenAI accounts to the /responses/compact probe path
-func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string, prompt string, mode string) error {
+func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string, prompt string, mode string, requestHeadersOverride ...map[string]string) error {
 	ctx := c.Request.Context()
 
 	// Get account
@@ -182,6 +202,7 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Account not found")
 	}
+	account = withAccountTestRequestHeadersOverride(account, requestHeadersOverride...)
 
 	// Route to platform-specific test method
 	if account.IsOpenAI() {
@@ -294,6 +315,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 		req.Header.Set("anthropic-beta", claude.APIKeyBetaHeader)
 		setAnthropicAPIKeyAuthHeader(req.Header, account, authToken)
 	}
+	ApplyAccountRequestHeadersOverride(req, account)
 
 	// Get proxy URL
 	proxyURL := ""
@@ -602,6 +624,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		req.Header.Set("accept", "text/event-stream")
 		setOpenAIChatGPTAccountHeaders(req.Header, credentialAccount)
 	}
+	ApplyAccountRequestHeadersOverride(req, account)
 
 	// Get proxy URL
 	proxyURL := ""
@@ -755,6 +778,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+authToken)
+	ApplyAccountRequestHeadersOverride(req, account)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -847,6 +871,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		req.Host = "chatgpt.com"
 		setOpenAIChatGPTAccountHeaders(req.Header, account)
 	}
+	ApplyAccountRequestHeadersOverride(req, account)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -1598,6 +1623,7 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+authToken)
+	ApplyAccountRequestHeadersOverride(req, account)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -1697,6 +1723,7 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 		req.Header.Set("User-Agent", codexCLIUserAgent)
 	}
 	setOpenAIChatGPTAccountHeaders(req.Header, account)
+	ApplyAccountRequestHeadersOverride(req, account)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {

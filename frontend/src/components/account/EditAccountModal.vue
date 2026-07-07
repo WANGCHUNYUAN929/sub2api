@@ -2465,6 +2465,13 @@ import {
 } from '@/components/account/credentialsBuilder'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
+import {
+  REQUEST_HEADERS_OVERRIDE_KEY,
+  REQUEST_HEADERS_OVERRIDE_PLACEHOLDER,
+  canUseRequestHeadersOverride as canUseAccountRequestHeadersOverride,
+  formatRequestHeadersOverride,
+  parseRequestHeadersOverrideInput
+} from '@/utils/requestHeadersOverride'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
 import {
   OPENAI_WS_MODE_CTX_POOL,
@@ -2657,8 +2664,6 @@ const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexImageToolMode = 'inherit' | 'enabled' | 'disabled' | 'block'
 const codexImageToolMode = ref<CodexImageToolMode>('inherit')
-const REQUEST_HEADERS_OVERRIDE_KEY = 'request_headers_override'
-const REQUEST_HEADERS_OVERRIDE_PLACEHOLDER = '{\n  "User-Agent": "codex_vscode/0.142.3 ..."\n}'
 const requestHeadersOverrideInput = ref('')
 type AnthropicAPIKeyAuthScheme = 'x_api_key' | 'authorization_bearer'
 const anthropicPassthroughEnabled = ref(false)
@@ -2872,50 +2877,16 @@ const isOpenAIModelRestrictionDisabled = computed(() =>
   props.account?.platform === 'openai' && openaiPassthroughEnabled.value
 )
 const canUseRequestHeadersOverride = computed(() =>
-  props.account?.platform === 'openai' ||
-  (props.account?.platform === 'anthropic' && props.account?.type === 'apikey')
+  canUseAccountRequestHeadersOverride(props.account?.platform, props.account?.type)
 )
-const formatRequestHeadersOverride = (extra?: Record<string, unknown>): string => {
-  const raw = extra?.[REQUEST_HEADERS_OVERRIDE_KEY]
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    return ''
-  }
-  return JSON.stringify(raw, null, 2)
-}
 const parseRequestHeadersOverride = (): Record<string, string> | null => {
-  const input = requestHeadersOverrideInput.value.trim()
-  if (!input) {
-    return {}
-  }
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(input)
-  } catch {
-    appStore.showError(t('admin.accounts.requestHeadersOverrideInvalidJson'))
+  const result = parseRequestHeadersOverrideInput(requestHeadersOverrideInput.value)
+  if (!result.ok) {
+    appStore.showError(t(`admin.accounts.requestHeadersOverrideErrors.${result.error}`))
     return null
   }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    appStore.showError(t('admin.accounts.requestHeadersOverrideMustBeObject'))
-    return null
-  }
-  const out: Record<string, string> = {}
-  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-    if (key.toLowerCase() !== 'user-agent') {
-      appStore.showError(t('admin.accounts.requestHeadersOverrideOnlyUserAgent'))
-      return null
-    }
-    if (typeof value !== 'string') {
-      appStore.showError(t('admin.accounts.requestHeadersOverrideValueMustBeString'))
-      return null
-    }
-    const trimmed = value.trim()
-    if (!trimmed) {
-      appStore.showError(t('admin.accounts.requestHeadersOverrideValueRequired'))
-      return null
-    }
-    out['User-Agent'] = trimmed
-  }
-  return out
+  requestHeadersOverrideInput.value = result.formatted
+  return result.headers
 }
 const applyRequestHeadersOverrideExtra = (
   extra: Record<string, unknown> | undefined

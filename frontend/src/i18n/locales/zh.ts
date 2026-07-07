@@ -3680,13 +3680,23 @@ export default {
       apiKeyHint: '您的 Claude Console API Key',
       requestHeadersOverride: '上游请求头覆盖',
       requestHeadersOverrideDesc:
-        '可选。填写 JSON 对象后，当前账号转发上游时会用这些字段覆盖最终请求头。当前仅支持 User-Agent。',
-      requestHeadersOverridePlaceholder: '{\n  "User-Agent": "codex_vscode/0.142.3 ..."\n}',
+        '可选。填写 JSON 对象后，当前账号转发上游时会用这些字段覆盖最终请求头。当前仅支持 User-Agent；保存时会自动格式化，并兼容从别处复制来的中文双引号。',
+      requestHeadersOverridePlaceholder:
+        '{\n  "User-Agent": "claude-cli/2.1.196 (external, claude-vscode, agent-sdk/0.3.196)"\n}',
+      testRequestHeadersOverrideHint:
+        '可选。仅用于本次测试连接；留空则使用账号已保存的覆盖配置。支持粘贴中文双引号，会自动格式化。',
       requestHeadersOverrideInvalidJson: '上游请求头覆盖必须是合法 JSON',
       requestHeadersOverrideMustBeObject: '上游请求头覆盖必须是 JSON 对象',
       requestHeadersOverrideValueMustBeString: '上游请求头覆盖的值必须是字符串',
       requestHeadersOverrideValueRequired: '上游请求头覆盖的值不能为空',
       requestHeadersOverrideOnlyUserAgent: '当前仅支持覆盖 User-Agent',
+      requestHeadersOverrideErrors: {
+        invalid_json: '上游请求头覆盖必须是合法 JSON',
+        must_be_object: '上游请求头覆盖必须是 JSON 对象',
+        value_must_be_string: '上游请求头覆盖的值必须是字符串',
+        value_required: '上游请求头覆盖的值不能为空',
+        only_user_agent: '当前仅支持覆盖 User-Agent'
+      },
       // OpenAI specific hints
       openai: {
         baseUrlHint: '留空使用官方 OpenAI API',
