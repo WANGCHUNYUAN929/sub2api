@@ -68,18 +68,41 @@ func withAccountTestRequestHeadersOverride(account *Account, overrides ...map[st
 	}
 
 	next := *account
-	nextExtra := make(map[string]any, len(account.Extra)+1)
-	for key, value := range account.Extra {
-		nextExtra[key] = value
+	nextCredentials := make(map[string]any, len(account.Credentials)+2)
+	for key, value := range account.Credentials {
+		nextCredentials[key] = value
 	}
 
 	headers := make(map[string]any, len(overrides[0]))
 	for key, value := range overrides[0] {
 		headers[key] = value
 	}
-	nextExtra[AccountRequestHeadersOverrideExtraKey] = headers
-	next.Extra = nextExtra
+	nextCredentials[credKeyHeaderOverrideEnabled] = true
+	nextCredentials[credKeyHeaderOverrides] = headers
+	next.Credentials = nextCredentials
 	return &next
+}
+
+func applyAccountTestHeaderOverrides(h http.Header, account *Account) {
+	if h == nil || account == nil {
+		return
+	}
+	account.ApplyHeaderOverrides(h)
+	if account.Credentials == nil {
+		return
+	}
+	enabled, _ := account.Credentials[credKeyHeaderOverrideEnabled].(bool)
+	if !enabled || account.IsHeaderOverrideEligible() {
+		return
+	}
+	for name, value := range resolveHeaderOverrides(stringMappingFromRaw(account.Credentials[credKeyHeaderOverrides])) {
+		for existing := range h {
+			if strings.EqualFold(existing, name) {
+				delete(h, existing)
+			}
+		}
+		h[resolveWireCasing(name)] = []string{value}
+	}
 }
 
 // AccountTestService handles account testing operations
@@ -315,7 +338,8 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 		req.Header.Set("anthropic-beta", claude.APIKeyBetaHeader)
 		setAnthropicAPIKeyAuthHeader(req.Header, account, authToken)
 	}
-	ApplyAccountRequestHeadersOverride(req, account)
+	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
+	applyAccountTestHeaderOverrides(req.Header, account)
 
 	// Get proxy URL
 	proxyURL := ""
@@ -622,9 +646,17 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	if isOAuth {
 		req.Host = "chatgpt.com"
 		req.Header.Set("accept", "text/event-stream")
+		req.Header.Set("OpenAI-Beta", "responses=experimental")
+		req.Header.Set("Originator", "codex_cli_rs")
+		if customUA := strings.TrimSpace(credentialAccount.GetOpenAIUserAgent()); customUA != "" {
+			req.Header.Set("User-Agent", customUA)
+		} else {
+			req.Header.Set("User-Agent", codexCLIUserAgent)
+		}
 		setOpenAIChatGPTAccountHeaders(req.Header, credentialAccount)
 	}
-	ApplyAccountRequestHeadersOverride(req, account)
+	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
+	applyAccountTestHeaderOverrides(req.Header, credentialAccount)
 
 	// Get proxy URL
 	proxyURL := ""
@@ -778,7 +810,8 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+authToken)
-	ApplyAccountRequestHeadersOverride(req, account)
+	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
+	applyAccountTestHeaderOverrides(req.Header, account)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -871,7 +904,8 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		req.Host = "chatgpt.com"
 		setOpenAIChatGPTAccountHeaders(req.Header, account)
 	}
-	ApplyAccountRequestHeadersOverride(req, account)
+	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
+	applyAccountTestHeaderOverrides(req.Header, account)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -1623,7 +1657,8 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+authToken)
-	ApplyAccountRequestHeadersOverride(req, account)
+	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
+	applyAccountTestHeaderOverrides(req.Header, account)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -1723,8 +1758,6 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 		req.Header.Set("User-Agent", codexCLIUserAgent)
 	}
 	setOpenAIChatGPTAccountHeaders(req.Header, account)
-	ApplyAccountRequestHeadersOverride(req, account)
-
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()

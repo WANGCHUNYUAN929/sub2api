@@ -507,7 +507,7 @@ func TestAccountTestService_OpenAIChatCompletionsTestUsesTemporaryHeaderOverride
 	)
 	require.NoError(t, err)
 	require.Equal(t, "claude-cli/2.1.196 (external, claude-vscode, agent-sdk/0.3.196)", upstream.lastReq.Header.Get("User-Agent"))
-	require.Nil(t, account.Extra[AccountRequestHeadersOverrideExtraKey], "临时测试覆盖不应写回原账号配置")
+	require.Nil(t, account.Credentials[credKeyHeaderOverrides], "临时测试覆盖不应写回原账号配置")
 }
 
 func TestAccountTestService_OpenAIChatCompletionsPathReturns4xx(t *testing.T) {

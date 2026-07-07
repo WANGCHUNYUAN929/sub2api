@@ -1,4 +1,5 @@
-export const REQUEST_HEADERS_OVERRIDE_KEY = 'request_headers_override'
+export const HEADER_OVERRIDE_ENABLED_KEY = 'header_override_enabled'
+export const HEADER_OVERRIDES_KEY = 'header_overrides'
 
 export const REQUEST_HEADERS_OVERRIDE_PLACEHOLDER =
   '{\n  "User-Agent": "claude-cli/2.1.196 (external, claude-vscode, agent-sdk/0.3.196)"\n}'
@@ -29,7 +30,7 @@ export const normalizeJsonQuotes = (value: string): string =>
   value.replace(/[\u201c\u201d\u201e\u201f\u301d\u301e\u301f\uff02]/g, (char) => smartQuoteMap[char] || char)
 
 export const canUseRequestHeadersOverride = (platform?: string, type?: string): boolean =>
-  platform === 'openai' || (platform === 'anthropic' && type === 'apikey')
+  (platform === 'openai' || platform === 'anthropic') && type === 'apikey'
 
 export const parseRequestHeadersOverrideInput = (value: string): RequestHeadersOverrideParseResult => {
   const input = normalizeJsonQuotes(value).trim()
@@ -70,12 +71,14 @@ export const parseRequestHeadersOverrideInput = (value: string): RequestHeadersO
   }
 }
 
-export const formatRequestHeadersOverride = (extra?: Record<string, unknown>): string => {
-  const raw = extra?.[REQUEST_HEADERS_OVERRIDE_KEY]
+export const formatRequestHeadersOverride = (credentials?: Record<string, unknown>): string => {
+  if (credentials?.[HEADER_OVERRIDE_ENABLED_KEY] !== true) {
+    return ''
+  }
+  const raw = credentials?.[HEADER_OVERRIDES_KEY]
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return ''
   }
   const result = parseRequestHeadersOverrideInput(JSON.stringify(raw))
   return result.ok ? result.formatted : ''
 }
-

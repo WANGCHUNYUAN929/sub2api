@@ -112,7 +112,7 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactUsesTemporaryHead
 	require.Equal(t, overrideUA, upstream.lastReq.Header.Get("User-Agent"))
 	require.Contains(t, rec.Body.String(), `"type":"test_complete"`)
 	<-updateCalls
-	require.Nil(t, account.Extra[AccountRequestHeadersOverrideExtraKey], "临时测试覆盖不应写回原账号配置")
+	require.Nil(t, account.Credentials[credKeyHeaderOverrides], "临时测试覆盖不应写回原账号配置")
 }
 
 func TestAccountTestService_TestAccountConnection_OpenAICompactOAuth404MarksUnsupported(t *testing.T) {
